@@ -1,3 +1,4 @@
+import os
 from flask import Flask, request, Response
 import requests
 
@@ -10,13 +11,11 @@ def index():
 @app.route('/proxy/<path:url>', methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 def proxy(url):
     try:
-        # Ensure the URL starts with http/https
         if not url.startswith("http"):
             url = "http://" + url
 
         headers = {key: value for key, value in request.headers if key.lower() not in ["host", "content-length"]}
 
-        # Forward the request to the actual URL
         if request.method == "GET":
             resp = requests.get(url, headers=headers, params=request.args, verify=False)
         elif request.method == "POST":
@@ -30,7 +29,6 @@ def proxy(url):
         else:
             return Response("Method Not Allowed", status=405)
 
-        # Remove unnecessary headers
         excluded_headers = ["content-encoding", "content-length", "transfer-encoding", "connection"]
         response_headers = [(name, value) for (name, value) in resp.headers.items() if name.lower() not in excluded_headers]
 
@@ -40,4 +38,5 @@ def proxy(url):
         return Response(f"Request failed: {str(e)}", status=500)
 
 if __name__ == "__main__":
-    app.run(debug=True, port=80)
+    port = int(os.environ.get("PORT", 10000))  # Render assigns a PORT dynamically
+    app.run(host="0.0.0.0", port=port, debug=True)
