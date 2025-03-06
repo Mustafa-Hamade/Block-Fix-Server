@@ -1,23 +1,43 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, Response
 import requests
-from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})  # Enable CORS to allow requests from your frontend
 
-@app.route('/fetch_html', methods=['GET'])
-def fetch_html():
-    url = request.args.get('url')  # Get the URL from the query parameter
-    if not url:
-        return jsonify({'error': 'URL parameter is required'}), 400
+@app.route("/")
+def index():
+    return "Flask Proxy is Running! Use /proxy/{URL} to access a website."
 
+@app.route('/proxy/<path:url>', methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+def proxy(url):
     try:
-        response = requests.get(url)
-        response.raise_for_status()  # Raise an exception for HTTP errors
+        # Ensure the URL starts with http/https
+        if not url.startswith("http"):
+            url = "http://" + url
 
-        return jsonify({'html': response.text})
+        headers = {key: value for key, value in request.headers if key.lower() not in ["host", "content-length"]}
+
+        # Forward the request to the actual URL
+        if request.method == "GET":
+            resp = requests.get(url, headers=headers, params=request.args, verify=False)
+        elif request.method == "POST":
+            resp = requests.post(url, headers=headers, json=request.get_json(), data=request.data, verify=False)
+        elif request.method == "DELETE":
+            resp = requests.delete(url, headers=headers, verify=False)
+        elif request.method == "PUT":
+            resp = requests.put(url, headers=headers, json=request.get_json(), data=request.data, verify=False)
+        elif request.method == "PATCH":
+            resp = requests.patch(url, headers=headers, json=request.get_json(), data=request.data, verify=False)
+        else:
+            return Response("Method Not Allowed", status=405)
+
+        # Remove unnecessary headers
+        excluded_headers = ["content-encoding", "content-length", "transfer-encoding", "connection"]
+        response_headers = [(name, value) for (name, value) in resp.headers.items() if name.lower() not in excluded_headers]
+
+        return Response(resp.content, resp.status_code, response_headers)
+
     except requests.exceptions.RequestException as e:
-        return jsonify({'error': str(e)}), 500
+        return Response(f"Request failed: {str(e)}", status=500)
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+if __name__ == "__main__":
+    app.run(debug=True, port=80)
